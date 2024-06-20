@@ -1,22 +1,39 @@
-### README.md
-
 # GeoCrime: The Forensic Forecaster
-This is still under development!
-By Robert Pickett (c) 2024
 
-## Overview
+[![Overview Image](https://github.com/Bobpick/Geographic_Profiling/raw/main/overview_image.png)](https://github.com/Bobpick/Geographic_Profiling/blob/main/overview_image.png)
 
-GeoCrime is a Python-based tool designed to assist in crime analysis and prediction. It leverages geographic profiling techniques, machine learning, and open-source data to identify potential crime hotspots and individuals of interest.
+GeoCrime is a Python-based tool designed to aid criminal investigations by applying geographic profiling techniques. It utilizes crime location data, street network information, and potentially offender data to estimate likely anchor points (e.g., residence or base of operations) and predict future crime locations.
 
 ## Features
 
-* **Geographic Profiling:** Calculates probabilities of crime occurrence based on various geographic models (CGT, Negative Exponential, Linear Distance Decay).
-* **Centrographic Analysis:** Identifies central points of crime clusters (CMD, Mean Center, Median Center).
-* **Mapping:** Visualizes crime locations, street networks, and potential areas of interest on an interactive map.
-* **Sex Offender Data Integration:** Incorporates sex offender locations from PDF files for enhanced analysis.
-* **Machine Learning Prediction:** Trains a model to predict future crime locations based on historical data, time, and celestial events.
-* **PDF Report Generation:** Creates a comprehensive report summarizing the analysis findings.
+* **Crime Data Analysis:** Processes crime data from a CSV file containing latitude, longitude, date, and time.
+* **Geographic Profiling:** Applies Rossmo's formula and other techniques to generate a geographic profile, highlighting areas with higher probabilities of the offender's residence.
+* **Anchor Point Estimation:** Calculates the most likely anchor point based on the geographic profile.
+* **Future Crime Prediction:** Predicts potential future crime locations within a buffer zone around the anchor point.
+* **Interactive Map Visualization:**  Creates an interactive Folium map that visualizes:
+    * **Crime Locations:** Markers for past crime incidents.
+    * **Heatmap:** Visual representation of the geographic profile (probability distribution).
+    * **Anchor Point:** Estimated location of the offender's base.
+    * **Future Crime Predictions:**  Markers for potential future crime sites.
+    * [![Image 2: Screenshot of the map with a potential next locations](https://github.com/Bobpick/Geographic_Profiling/blob/main/potential_next_location.png))
+    * **Street Network:** Overlay of roads and streets for context.
+* **Registered Sex Offender Overlay:**  Option to overlay the locations of registered sex offenders from a PDF file.
+[![Image 3: Screenshot of the map with registered offender](https://github.com/Bobpick/Geographic_Profiling/blob/main/zoomed_in_image.png)
 
+* **Address Geocoding:**  Uses the OpenCage API to geocode addresses of individuals for mapping.
+* **Customizable Parameters:** Allows adjusting parameters like the buffer zone radius and decay factor for fine-tuning the analysis.
+
+## How to Use
+
+1. **Prepare Input Data:**
+   * Create a CSV file named "your_crime_data.csv" with columns: `Latitude`, `Longitude`, `Date`, `Time`.
+   * Place the file in the same directory as the script.
+   * Optionally, prepare a PDF file named "location.pdf" containing the addresses of individuals of interest.
+   
+2. **Install Dependencies:**
+   ```bash
+   pip install pandas numpy folium osmnx matplotlib scipy opencage geopy fitz scikit-learn
+   
 ## Installation
 
 1. **Clone the repository:** `git clone https://github.com/your_username/GeoCrime.git`
@@ -30,9 +47,7 @@ GeoCrime is a Python-based tool designed to assist in crime analysis and predict
 2. **Run the script:** `python geocrime.py`
 3. **View the results:**
    * **Crime_Map.html:** Interactive map displaying crime locations, street network, and individuals of interest.
-   * **Crime_Map_With_Predictions.html:** Interactive map with additional heatmap showing predicted crime probabilities.
-   * **Crime_Report.pdf:** PDF report summarizing the analysis.
-
+ 
 ## Example Data Files
 
 ### your_crime_data.csv
