@@ -1,25 +1,25 @@
-import pandas as pd
-import os
+from folium import plugins
+from folium.features import customicon
+from geopy.exc import geocoderunavailable
+from geopy.geocoders import nominatim
+from opencage.geocoder import opencagegeocode, ratelimitexceedederror, invalidinputerror, unknownerror
+from scipy.spatial.distance import cdist
+from scipy.stats import gaussian_kde
+from sklearn.ensemble import randomforestregressor
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import kerneldensity
+from sklearn.preprocessing import standardscaler
+import fitz
+import folium
 import matplotlib.cm as cm
 import matplotlib.colors
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
-import folium
-from folium import plugins
-from folium.features import CustomIcon
-import osmnx as ox
-from scipy.spatial.distance import cdist
-from scipy.stats import gaussian_kde
-from opencage.geocoder import OpenCageGeocode, RateLimitExceededError, InvalidInputError, UnknownError
-from geopy.exc import GeocoderUnavailable
-from geopy.geocoders import Nominatim
-import time
 import numpy as np
-import fitz
-from sklearn.neighbors import KernelDensity
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import StandardScaler
+import os
+import osmnx as ox
+import pandas as pd
+import time
 
 def announce_and_disclaimer():
     """Display the announcement and disclaimer before starting the process."""
@@ -290,7 +290,7 @@ def add_individuals_to_map(individuals_coords, crime_coords, buffer_radius, m):
 
 
 NOMINATIM_USER_AGENT = "GeoCrime"
-OPENCAGE_API_KEY = "698757eee86d40b5b196b99d8de2efe9"
+OPENCAGE_API_KEY = "xxxxxeee86d40b5b196b99d8de2efe9"
 
 def reverse_geocode(coord, timeout=10, max_retries=3):
     geolocator = Nominatim(user_agent=NOMINATIM_USER_AGENT)
@@ -314,14 +314,6 @@ def reverse_geocode(coord, timeout=10, max_retries=3):
     except Exception as e:
         print(f"Backup geocoder failed: {e}")
         return "Address not found"
-
-import pandas as pd
-import numpy as np
-import os
-import folium
-import osmnx as ox
-from scipy.spatial.distance import cdist
-import matplotlib.colors as mcolors
 
 # Define functions for geographic profiling and prediction
 def calculate_geographic_profile(nodes, crime_coords, buffer_radius=1000, f=1.2):
