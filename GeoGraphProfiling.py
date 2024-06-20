@@ -21,6 +21,7 @@ import osmnx as ox
 import pandas as pd
 import time
 
+
 def announce_and_disclaimer():
     """Display the announcement and disclaimer before starting the process."""
     announcement = """
@@ -290,7 +291,7 @@ def add_individuals_to_map(individuals_coords, crime_coords, buffer_radius, m):
 
 
 NOMINATIM_USER_AGENT = "GeoCrime"
-OPENCAGE_API_KEY = "xxxxxeee86d40b5b196b99d8de2efe9"
+OPENCAGE_API_KEY = "698757eee86d40b5b196b99d8de2efe9"
 
 def reverse_geocode(coord, timeout=10, max_retries=3):
     geolocator = Nominatim(user_agent=NOMINATIM_USER_AGENT)
@@ -377,65 +378,84 @@ def predict_future_crime_locations(anchor_point, buffer_radius, num_locations=3)
         future_crime_coords.append(future_coord)
     
     return future_crime_coords
+def get_map_bounds(coords1, coords2=None, padding=0.1):
+    """Calculates the bounds for a Folium map that encompasses all coordinates."""
+    min_lat = min(coords1[:, 0])
+    max_lat = max(coords1[:, 0])
+    min_lon = min(coords1[:, 1])
+    max_lon = max(coords1[:, 1])
+
+    if coords2 is not None:
+        min_lat = min(min_lat, min(coords2[:, 0]))
+        max_lat = max(max_lat, max(coords2[:, 0]))
+        min_lon = min(min_lon, min(coords2[:, 1]))
+        max_lon = max(max_lon, max(coords2[:, 1]))
+
+    lat_padding = (max_lat - min_lat) * padding
+    lon_padding = (max_lon - min_lon) * padding
+    return [(min_lat - lat_padding, min_lon - lon_padding), (max_lat + lat_padding, max_lon + lon_padding)]
+
 
 def main():
-    # Load crime data and extract coordinates
-    crime_data = pd.read_csv("your_crime_data.csv")
+    announce_and_disclaimer() 
+
+    # Load crime data
+    file_path = "your_crime_data.csv"  # Make sure this matches your file name
+    crime_data = load_crime_data(file_path)
+    if crime_data is None:
+        return  # Exit if there's an error loading the data
+
     crime_coords = crime_data[['Latitude', 'Longitude']].values
-
-    # Load street network around crime locations
+    
+    # Load street network
     mean_center_point = np.mean(crime_coords, axis=0)
-    graph = ox.graph_from_point(mean_center_point, dist=2000, network_type='drive')
-    nodes, _ = ox.graph_to_gdfs(graph)
+    graph = ox.graph_from_point(mean_center_point, dist=5000, network_type='drive')
+    nodes, edges = ox.graph_to_gdfs(graph)
+    node_coords = nodes[['y', 'x']].values  # Extract node coordinates for easier calculation
 
-    # Calculate geographic profile
-    geographic_profile = calculate_geographic_profile(nodes, crime_coords)
-
-    # Calculate anchor point
+    # Geographic Profiling and Prediction
+    buffer_radius = 1500  # Or any other value you deem appropriate in meters
+    geographic_profile = calculate_geographic_profile(nodes, crime_coords, buffer_radius=2000, f=1.5) 
     anchor_point = calculate_anchor_point(nodes, geographic_profile)
+    future_crime_coords = predict_future_crime_locations(anchor_point, buffer_radius, num_locations=5)
 
-    # Predict future crime locations based on anchor point and buffer radius
-    buffer_radius = 1500  # Example buffer radius in meters
-    future_crime_coords = predict_future_crime_locations(anchor_point, buffer_radius)
-
-    # Initialize Folium map centered at anchor point
+    # Folium Map Creation
     m = folium.Map(location=anchor_point, zoom_start=13)
+    
+    # Add Heatmap
+    add_probability_heatmap(node_coords, geographic_profile, m, 'YlOrRd') 
+    plugins.HeatMapWithTime(
+        data=[(lat, lon, intensity) for lat, lon, intensity in zip(nodes['y'], nodes['x'], geographic_profile)],
+        radius=15,
+        gradient={0.2: 'blue', 0.6: 'lime', 0.8: 'yellow', 1.0: 'red'},
+        min_opacity=0.3,
+        max_opacity=0.8,
+        blur=15,
+    ).add_to(m)
 
     # Add crime markers to map
-    for index, row in crime_data.iterrows():
+    add_markers_to_map(crime_data, mean_center_point, mean_center_point, m)  # Use mean center as it's already calculated
+
+    # Geocode Individuals and Add Markers
+    individuals_data = extract_individuals_info("location.pdf")
+    geocoded_individuals = geocode_addresses(individuals_data)  # Get geocoded results
+    individuals_coords = geocoded_individuals[['Latitude', 'Longitude']].values  # Extract coordinates 
+
+    icon_path = 'person.png'  # Replace with the actual path to your person icon
+    for _, row in geocoded_individuals.iterrows():
         folium.Marker(
             location=[row['Latitude'], row['Longitude']],
-            popup=f"Date: {row['Date']} Time: {row['Time']}",
-            icon=folium.Icon(color='red', icon='info-sign')
+            popup=row['name'],
+            icon=folium.CustomIcon(icon_image=icon_path, icon_size=(30, 30))
         ).add_to(m)
 
-    # Add street network to map
-    for _, row in nodes.iterrows():
-        folium.CircleMarker(
-            location=[row['y'], row['x']],
-            radius=2,
-            color='black',
-            fill=True,
-            fill_color='black',
-            fill_opacity=0.6,
-        ).add_to(m)
+    # Add street network
+    add_street_network_to_map(nodes, edges, crime_coords, future_crime_coords, m, street_network_opacity=0.4)
 
-    # Add heatmap based on geographic profile
-    colormap_func = mcolors.LinearSegmentedColormap.from_list("", ["green", "yellow", "red"])
-    colors_rgba = [colormap_func(geographic_profile[i] / np.max(geographic_profile)) for i in range(len(nodes))]
-    colors_hex = [mcolors.to_hex(rgba) for rgba in colors_rgba]
+    # Add anchor point marker
+    folium.Marker(anchor_point, popup='Anchor Point', icon=folium.Icon(color='purple', icon='star')).add_to(m)
 
-    for (idx, color) in zip(nodes.index, colors_hex):
-        folium.CircleMarker(
-            location=[nodes.loc[idx, 'y'], nodes.loc[idx, 'x']],
-            radius=5,
-            color=color,
-            fill=True,
-            fill_color=color,
-            fill_opacity=0.6
-        ).add_to(m)
-
-    # Add markers for predicted future crime locations
+    # Add future crime markers
     for coord in future_crime_coords:
         folium.Marker(
             location=[coord[0], coord[1]],
@@ -443,7 +463,12 @@ def main():
             icon=folium.Icon(color='green')
         ).add_to(m)
 
-    # Save map as HTML
+
+    # Fit Map Bounds (now using individuals_coords)
+    bounds = get_map_bounds(crime_coords, individuals_coords, padding=0.1)  
+    m.fit_bounds(bounds)
+
+    # Save map
     m.save("crime_map.html")
     print("Map has been saved as crime_map.html")
 
