@@ -1,25 +1,18 @@
-from folium import plugins
-from folium.features import customicon
-from geopy.exc import geocoderunavailable
-from geopy.geocoders import nominatim
-from opencage.geocoder import opencagegeocode, ratelimitexceedederror, invalidinputerror, unknownerror
-from scipy.spatial.distance import cdist
-from scipy.stats import gaussian_kde
-from sklearn.ensemble import randomforestregressor
-from sklearn.model_selection import train_test_split
-from sklearn.neighbors import kerneldensity
-from sklearn.preprocessing import standardscaler
-import fitz
-import folium
-import matplotlib.cm as cm
-import matplotlib.colors
+import pandas as pd
+import os
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
-import numpy as np
-import os
+import folium
+from folium import plugins
+from folium.features import CustomIcon
 import osmnx as ox
-import pandas as pd
+from scipy.spatial.distance import cdist
+from opencage.geocoder import OpenCageGeocode, RateLimitExceededError, InvalidInputError, UnknownError
+from geopy.exc import GeocoderUnavailable
+from geopy.geocoders import Nominatim
 import time
+import numpy as np
+import fitz
 
 
 def announce_and_disclaimer():
@@ -220,26 +213,30 @@ def normalize_probabilities(probabilities):
     return (probabilities - prob_min) / (prob_max - prob_min)
 
 
-def add_probability_heatmap(node_coords, probabilities, folium_map, colormap='Blues'):
+def add_probability_heatmap(node_coords, probabilities, folium_map, colormap='YlOrRd'):
     normalized_probs = normalize_probabilities(probabilities)
     colormap_func = plt.get_cmap(colormap)
     colors_rgba = colormap_func(normalized_probs)
-
-    # Ensure RGBA values are clipped to [0, 1] range and reshape if necessary
-    colors_rgba_clipped = np.clip(colors_rgba, 0.0, 1.0).reshape(-1, 4)
-
+    
+    # Remove transparency (alpha channel) to make solid circles
+    colors_rgba[:, 3] = 1.0
+    
     # Convert RGBA to Hex
-    colors_hex = [mcolors.to_hex(rgba) for rgba in colors_rgba_clipped]
-
+    colors_hex = [mcolors.to_hex(rgba) for rgba in colors_rgba]
+    
     # Add circles to the map
     for (lat, lon), color in zip(node_coords, colors_hex):
         folium.CircleMarker(
             location=(lat, lon),
-            radius=5,
+            radius=8,
             color=color,
             fill=True,
-            fill_color=color
+            fill_color=color,
+            fill_opacity=1.0  # Make circles fully opaque
         ).add_to(folium_map)
+
+
+
 
 
 def add_street_network_to_map(nodes, edges, crime_coords, future_crime_coords, m, street_network_opacity=1.0):
@@ -259,17 +256,12 @@ def add_street_network_to_map(nodes, edges, crime_coords, future_crime_coords, m
         coord_pairs = list(zip(points[1], points[0]))  # Extract coordinates from geometry
         folium.PolyLine(coord_pairs, color='blue', weight=2.5, opacity=street_network_opacity).add_to(m)
 
-    # Use a custom icon for crime location markers
-    icon_path = 'skull.png'  # Ensure this path is correct and the file is in the same directory
-    if not os.path.isfile(icon_path):
-        print(f"Icon file {icon_path} not found.")
-        return
-
+    # Remove the skull icon part
     for coord in crime_coords:
         folium.Marker(
             location=[coord[0], coord[1]],
             popup='Crime Location',
-            icon=folium.CustomIcon(icon_image=icon_path, icon_size=(30, 30))  # Adjust the icon size as needed
+            icon=folium.Icon(color='red', icon='info-sign') # Default red marker with info sign
         ).add_to(m)
         
     # Add green markers for future crime locations
@@ -395,7 +387,22 @@ def get_map_bounds(coords1, coords2=None, padding=0.1):
     lon_padding = (max_lon - min_lon) * padding
     return [(min_lat - lat_padding, min_lon - lon_padding), (max_lat + lat_padding, max_lon + lon_padding)]
 
-
+def add_dynamic_legend(m):
+    legend_html = """
+    <div style="position: fixed; bottom: 50px; left: 50px; width: 180px; height: 150px; 
+                 border:2px solid grey; z-index:9999; font-size:14px; background-color:white; padding: 10px;">
+        <b>Legend</b><br>
+        <i class="fa fa-map-marker" style="color:red"></i> Crime Location<br>
+        <i class="fa fa-map-marker" style="color:purple"></i> Anchor Point<br>
+        <i class="fa fa-map-marker" style="color:green"></i> Future Crime Location<br>
+        <i class="fa fa-male" style="color:black; font-size:20px;"></i> Individual of Interest<br>
+        <span style="display: inline-block; width: 12px; height: 12px; background-color: yellow;"></span> Low Probability<br>
+        <span style="display: inline-block; width: 12px; height: 12px; background-color: red;"></span> High Probability
+    </div>
+    """
+    element = folium.Element(legend_html)
+    m.get_root().html.add_child(element)
+    
 def main():
     announce_and_disclaimer() 
 
@@ -409,12 +416,12 @@ def main():
     
     # Load street network
     mean_center_point = np.mean(crime_coords, axis=0)
-    graph = ox.graph_from_point(mean_center_point, dist=5000, network_type='drive')
+    graph = ox.graph_from_point(mean_center_point, dist=10000, network_type='drive')
     nodes, edges = ox.graph_to_gdfs(graph)
     node_coords = nodes[['y', 'x']].values  # Extract node coordinates for easier calculation
 
     # Geographic Profiling and Prediction
-    buffer_radius = 1500  # Or any other value you deem appropriate in meters
+    buffer_radius = 5500  # Or any other value you deem appropriate in meters
     geographic_profile = calculate_geographic_profile(nodes, crime_coords, buffer_radius=2000, f=1.5) 
     anchor_point = calculate_anchor_point(nodes, geographic_profile)
     future_crime_coords = predict_future_crime_locations(anchor_point, buffer_radius, num_locations=5)
@@ -426,7 +433,7 @@ def main():
     add_probability_heatmap(node_coords, geographic_profile, m, 'YlOrRd') 
     plugins.HeatMapWithTime(
         data=[(lat, lon, intensity) for lat, lon, intensity in zip(nodes['y'], nodes['x'], geographic_profile)],
-        radius=15,
+        radius=50,
         gradient={0.2: 'blue', 0.6: 'lime', 0.8: 'yellow', 1.0: 'red'},
         min_opacity=0.3,
         max_opacity=0.8,
@@ -462,11 +469,13 @@ def main():
             popup='Future Crime Location',
             icon=folium.Icon(color='green')
         ).add_to(m)
-
+    # Add dynamic legend
+    add_dynamic_legend(m)
 
     # Fit Map Bounds (now using individuals_coords)
     bounds = get_map_bounds(crime_coords, individuals_coords, padding=0.1)  
     m.fit_bounds(bounds)
+
 
     # Save map
     m.save("crime_map.html")
@@ -474,3 +483,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
