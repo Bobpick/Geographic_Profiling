@@ -7,13 +7,12 @@ from folium import plugins
 from folium.features import CustomIcon
 import osmnx as ox
 from scipy.spatial.distance import cdist
-from opencage.geocoder import OpenCageGeocode, RateLimitExceededError, InvalidInputError, UnknownError
 from geopy.exc import GeocoderUnavailable
 from geopy.geocoders import Nominatim
-import time
 import numpy as np
 import fitz
 
+NOMINATIM_USER_AGENT = "GeoCrime"
 
 def announce_and_disclaimer():
     """Display the announcement and disclaimer before starting the process."""
@@ -31,30 +30,23 @@ def announce_and_disclaimer():
     print(disclaimer)
     input("Press any key to start...")
 
-
 def load_crime_data(file_path):
     """Loads crime data from a CSV file."""
     try:
         df = pd.read_csv(file_path)
-        # Check if the required columns are in the dataframe
         required_columns = ['Latitude', 'Longitude', 'Date', 'Time']
         missing_columns = [col for col in required_columns if col not in df.columns]
         if missing_columns:
             raise ValueError(f"Missing columns in the CSV file: {', '.join(missing_columns)}")
-        
         return df[['Latitude', 'Longitude', 'Date', 'Time']].dropna()
     except Exception as e:
         print(f"Error loading crime data: {e}")
         return None
-    
+
 def crime_geographic_targeting(coords, crime_coords, k=1, f=1.2, g=1.2, buffer_radius=10000):
     """Calculates the CGT probability for each coordinate."""
-    # Ensure both coords and crime_coords are 2D arrays with the same number of columns
     coords = np.atleast_2d(coords)
     crime_coords = np.atleast_2d(crime_coords)
-
-    print(f"coords shape: {coords.shape}")
-    print(f"crime_coords shape: {crime_coords.shape}")
 
     if coords.shape[1] != crime_coords.shape[1]:
         raise ValueError("coords and crime_coords must have the same number of columns")
@@ -68,7 +60,6 @@ def crime_geographic_targeting(coords, crime_coords, k=1, f=1.2, g=1.2, buffer_r
 
 def negative_exponential(coords, crime_coords, A=1.89, B=-0.06):
     """Calculates the Negative Exponential probability for each coordinate."""
-    # Ensure both coords and crime_coords are 2D arrays with the same number of columns
     coords = np.atleast_2d(coords)
     crime_coords = np.atleast_2d(crime_coords)
 
@@ -80,7 +71,6 @@ def negative_exponential(coords, crime_coords, A=1.89, B=-0.06):
 
 def linear_distance_decay(coords, crime_coords, A=1.9, B=-0.06):
     """Calculates the Linear Distance Decay probability for each coordinate."""
-    # Ensure both coords and crime_coords are 2D arrays with the same number of columns
     coords = np.atleast_2d(coords)
     crime_coords = np.atleast_2d(crime_coords)
 
@@ -90,77 +80,80 @@ def linear_distance_decay(coords, crime_coords, A=1.9, B=-0.06):
     distances = cdist(coords, crime_coords)
     return A + B * distances
 
+def calculate_geographic_profile(nodes, crime_coords, buffer_radius=1000, f=1.2):
+    """Calculates the geographic profile based on Rossmo's formula."""
+    node_coords = nodes[['y', 'x']].values
+    distances = cdist(node_coords, crime_coords)
+    phi = 1 / (distances + 1e-8)  # Avoid division by zero
+    part1 = np.sum(phi**f, axis=1)
+    part2 = (1 - phi) * (buffer_radius**f - distances**f) / (2 * buffer_radius - distances)
+    part2[distances >= buffer_radius] = 0  # Set to 0 outside buffer
+    geographic_profile = part1 + np.sum(part2, axis=1)
+    return geographic_profile
 
-def calculate_cmd(crime_coords):
-    """Calculates the CMD from crime coordinates."""
-    total_distances = np.sum(cdist(crime_coords, crime_coords), axis=1)
-    return crime_coords[np.argmin(total_distances)]
+def calculate_anchor_point(nodes, geographic_profile):
+    """Calculates the anchor point based on the geographic profile."""
+    max_idx = np.argmax(geographic_profile)
+    return (nodes.iloc[max_idx]['y'], nodes.iloc[max_idx]['x'])
 
-def calculate_mean_center(crime_coords):
-    """Calculates the Mean Center from crime coordinates."""
-    return np.mean(crime_coords, axis=0)
+def predict_future_crime_locations_multiple(nodes, crime_coords, buffer_radius=5500, num_locations=5):
+    node_coords = nodes[['y', 'x']].values
 
-def calculate_median_center(crime_coords):
-    """Calculates the Median Center from crime coordinates."""
-    return np.median(crime_coords, axis=0)
+    probabilities_rossmo = calculate_geographic_profile(nodes, crime_coords, buffer_radius, f=1.5)
+    probabilities_cgt = crime_geographic_targeting(node_coords, crime_coords, buffer_radius=buffer_radius)
+    probabilities_neg_exp = negative_exponential(node_coords, crime_coords).sum(axis=1)  # Sum probabilities across crimes
+    probabilities_linear = linear_distance_decay(node_coords, crime_coords).sum(axis=1)  # Sum probabilities across crimes
 
-def add_street_network_to_map(nodes, edges, crime_coords, future_crime_coords, m, street_network_opacity=1.0):
-    """Add street network to the Folium map."""
-    for _, row in nodes.iterrows():
+    probabilities_rossmo = normalize_probabilities(probabilities_rossmo).reshape(-1, 1)
+    probabilities_cgt = normalize_probabilities(probabilities_cgt).reshape(-1, 1)
+    probabilities_neg_exp = normalize_probabilities(probabilities_neg_exp).reshape(-1, 1)
+    probabilities_linear = normalize_probabilities(probabilities_linear).reshape(-1, 1)
+
+    combined_probabilities = np.hstack([probabilities_rossmo, probabilities_cgt, probabilities_neg_exp, probabilities_linear]).mean(axis=1)
+
+    top_indices = np.argsort(combined_probabilities)[-num_locations:][::-1]
+    future_crime_coords = node_coords[top_indices]
+    
+    models = ['Rossmo\'s Formula', 'CGT', 'Negative Exponential', 'Linear Distance Decay']
+    predicted_by = np.array(models)[np.argmax(np.hstack([probabilities_rossmo, probabilities_cgt, probabilities_neg_exp, probabilities_linear]), axis=1)]
+    top_predictions = predicted_by[top_indices]
+    
+    return future_crime_coords, top_predictions
+
+def normalize_probabilities(probabilities):
+    prob_min = np.min(probabilities)
+    prob_max = np.max(probabilities)
+    if prob_max == prob_min:
+        return np.zeros_like(probabilities)
+    return (probabilities - prob_min) / (prob_max - prob_min)
+
+def add_probability_heatmap(node_coords, probabilities, folium_map, colormap='Reds'):
+    normalized_probs = normalize_probabilities(probabilities)
+    colormap_func = plt.get_cmap(colormap)
+    colors_rgba = colormap_func(normalized_probs)
+    colors_rgba[:, 3] = 1.0  # Remove transparency (alpha channel)
+    colors_hex = [mcolors.to_hex(rgba) for rgba in colors_rgba]
+
+    for (lat, lon), color in zip(node_coords, colors_hex):
         folium.CircleMarker(
-            location=[row['y'], row['x']],
-            radius=2,
-            color='black',
+            location=(lat, lon),
+            radius=8,
+            color=color,
             fill=True,
-            fill_color='black',
-            fill_opacity=street_network_opacity,
-        ).add_to(m)
-
-    for _, row in edges.iterrows():
-        points = row['geometry'].xy
-        coord_pairs = list(zip(points[1], points[0]))  # Extract coordinates from geometry
-        folium.PolyLine(coord_pairs, color='blue', weight=2.5, opacity=street_network_opacity).add_to(m)
-
-    # Use a custom icon for crime location markers
-    icon_path = 'skull.png'  # Ensure this path is correct and the file is in the same directory
-    if not os.path.isfile(icon_path):
-        print(f"Icon file {icon_path} not found.")
-        return
-
-    for coord in crime_coords:
-        folium.Marker(
-            location=[coord[0], coord[1]],
-            popup='Crime Location',
-            icon=folium.CustomIcon(icon_image=icon_path, icon_size=(30, 30))  # Adjust the icon size as needed
-        ).add_to(m)
-        
-    # Add green markers for future crime locations
-    for coord in future_crime_coords:
-        folium.Marker(
-            location=[coord[0], coord[1]],
-            popup='Future Crime Location',
-            icon=folium.Icon(color='green')
-        ).add_to(m)
-
-
-def add_proportional_symbol_markers(crime_data, folium_map):
-    """Adds proportional symbol markers to the Folium map."""
-    for index, row in crime_data.iterrows():
-        folium.CircleMarker(
-            location=[row['Latitude'], row['Longitude']],
-            radius=5,  # Adjust radius based on crime count or another attribute
-            color='red',
-            fill=True,
-            fill_color='red',
-            popup=f"Date: {row['Date']} Time: {row['Time']}"
+            fill_color=color,
+            fill_opacity=1.0
         ).add_to(folium_map)
-        
-def create_folium_map(center_point):
-    """Creates a Folium map centered at the given coordinates."""
-    return folium.Map(location=center_point, zoom_start=12)
+
+
+def add_markers_to_map(crime_data, folium_map):
+    for _, row in crime_data.iterrows():
+        folium.Marker(
+            location=[row['Latitude'], row['Longitude']],
+            popup=f"Date: {row['Date']} Time: {row['Time']}",
+            icon=folium.Icon(color='red', icon='info-sign')
+        ).add_to(folium_map)
 
 def extract_individuals_info(pdf_path):
-    """Extracts individuals' names and addresses from the PDF."""
     doc = fitz.open(pdf_path)
     individuals = []
 
@@ -177,7 +170,6 @@ def extract_individuals_info(pdf_path):
     return pd.DataFrame(individuals)
 
 def geocode_addresses(df):
-    """Geocodes addresses to coordinates."""
     geolocator = Nominatim(user_agent="crime_mapping")
     coords = []
 
@@ -189,298 +181,101 @@ def geocode_addresses(df):
             else:
                 coords.append((None, None))
         except Exception as e:
-            print(f"Error geocoding address {address}: {e}")
+            print(f"Error geocoding address '{address}': {e}")
             coords.append((None, None))
 
-    df['Latitude'], df['Longitude'] = zip(*coords)
-    return df.dropna(subset=['Latitude', 'Longitude'])
+    df['latitude'] = [lat for lat, _ in coords]
+    df['longitude'] = [lon for _, lon in coords]
 
-def add_markers_to_map(crime_data, mean_center, median_center, m):
-    """Add markers for crime locations to the folium map."""
-    for index, row in crime_data.iterrows():
+    return df.dropna(subset=['latitude', 'longitude'])
+
+def create_map_with_legend(crime_data, future_crime_locations, sex_offenders, base_location):
+    m = folium.Map(location=base_location, zoom_start=13)
+
+    add_markers_to_map(crime_data, m)
+
+    model_colors = {
+        "Rossmo's Formula": 'green',
+        "CGT": 'orange',
+        "Negative Exponential": 'purple',
+        "Linear Distance Decay": 'pink'
+    }
+
+    for (lat, lon), model in future_crime_locations:
+        color = model_colors.get(model, 'black')
         folium.Marker(
-            location=[row['Latitude'], row['Longitude']],
-            popup=f"Date: {row['Date']} Time: {row['Time']}",
-            icon=folium.Icon(color='red', icon='info-sign')
+            location=[lat, lon],
+            icon=folium.Icon(color=color, icon='info-sign'),
+            popup=f"Predicted Future Crime Location by {model}"
         ).add_to(m)
 
-
-def normalize_probabilities(probabilities):
-    prob_min = np.min(probabilities)
-    prob_max = np.max(probabilities)
-    if prob_max == prob_min:
-        return np.zeros_like(probabilities)
-    return (probabilities - prob_min) / (prob_max - prob_min)
-
-
-def add_probability_heatmap(node_coords, probabilities, folium_map, colormap='YlOrRd'):
-    normalized_probs = normalize_probabilities(probabilities)
-    colormap_func = plt.get_cmap(colormap)
-    colors_rgba = colormap_func(normalized_probs)
-    
-    # Remove transparency (alpha channel) to make solid circles
-    colors_rgba[:, 3] = 1.0
-    
-    # Convert RGBA to Hex
-    colors_hex = [mcolors.to_hex(rgba) for rgba in colors_rgba]
-    
-    # Add circles to the map
-    for (lat, lon), color in zip(node_coords, colors_hex):
-        folium.CircleMarker(
-            location=(lat, lon),
-            radius=8,
-            color=color,
-            fill=True,
-            fill_color=color,
-            fill_opacity=1.0  # Make circles fully opaque
-        ).add_to(folium_map)
-
-
-
-
-
-def add_street_network_to_map(nodes, edges, crime_coords, future_crime_coords, m, street_network_opacity=1.0):
-    """Add street network to the Folium map."""
-    for _, row in nodes.iterrows():
-        folium.CircleMarker(
-            location=[row['y'], row['x']],
-            radius=2,
-            color='black',
-            fill=True,
-            fill_color='black',
-            fill_opacity=street_network_opacity,
-        ).add_to(m)
-
-    for _, row in edges.iterrows():
-        points = row['geometry'].xy
-        coord_pairs = list(zip(points[1], points[0]))  # Extract coordinates from geometry
-        folium.PolyLine(coord_pairs, color='blue', weight=2.5, opacity=street_network_opacity).add_to(m)
-
-    # Remove the skull icon part
-    for coord in crime_coords:
+    for _, row in sex_offenders.iterrows():
         folium.Marker(
-            location=[coord[0], coord[1]],
-            popup='Crime Location',
-            icon=folium.Icon(color='red', icon='info-sign') # Default red marker with info sign
-        ).add_to(m)
-        
-    # Add green markers for future crime locations
-    for coord in future_crime_coords:
-        folium.Marker(
-            location=[coord[0], coord[1]],
-            popup='Future Crime Location',
-            icon=folium.Icon(color='green')
+            location=[row['latitude'], row['longitude']],
+            popup=row['name'],
+            icon=folium.Icon(color='blue', icon='user')
         ).add_to(m)
 
-
-def add_individuals_to_map(individuals_coords, crime_coords, buffer_radius, m):
-    """Adds individuals' markers to the map if they are within buffer_radius of any crime coordinate."""
-    for coord in crime_coords:
-        for ind_coord in individuals_coords:
-            distance = np.linalg.norm(np.array(coord) - np.array(ind_coord))
-            if distance <= buffer_radius:
-                folium.Marker(ind_coord, popup="Individual of Interest").add_to(m)
-
-
-NOMINATIM_USER_AGENT = "GeoCrime"
-OPENCAGE_API_KEY = "698757eee86d40b5b196b99d8de2efe9"
-
-def reverse_geocode(coord, timeout=10, max_retries=3):
-    geolocator = Nominatim(user_agent=NOMINATIM_USER_AGENT)
-    backup_geocoder = OpenCageGeocode(OPENCAGE_API_KEY)
-
-    retries = 0
-    while retries < max_retries:
-        try:
-            location = geolocator.reverse(coord, timeout=timeout)
-            return location.address
-        except (GeocoderUnavailable, RateLimitExceededError):
-            retries += 1
-            time.sleep(1)
-        except (InvalidInputError, UnknownError) as e:
-            print(f"Error reverse geocoding: {e}")
-            return "Address not found"
-
-    try:
-        location = backup_geocoder.reverse_geocode(coord[0], coord[1])[0]
-        return location['formatted']
-    except Exception as e:
-        print(f"Backup geocoder failed: {e}")
-        return "Address not found"
-
-# Define functions for geographic profiling and prediction
-def calculate_geographic_profile(nodes, crime_coords, buffer_radius=1000, f=1.2):
-    """
-    Calculates the geographic profile based on Rossmo's formula.
-
-    Parameters:
-    - nodes: DataFrame containing geographic coordinates of nodes.
-    - crime_coords: 2D numpy array of crime coordinates.
-    - buffer_radius: Buffer zone radius around anchor point.
-    - f: Exponential decay factor.
-
-    Returns:
-    - geographic_profile: 1D numpy array of geographic profile values.
-    """
-    node_coords = nodes[['y', 'x']].values  # Extract node coordinates
-
-    distances = cdist(node_coords, crime_coords)
-    phi = 1 / (distances + 1e-8)  # Avoid division by zero
-    part1 = np.sum(phi**f, axis=1)
-    part2 = (1 - phi) * (buffer_radius**f - distances**f) / (2 * buffer_radius - distances)
-    part2[distances >= buffer_radius] = 0  # Set to 0 outside buffer
-    geographic_profile = part1 + np.sum(part2, axis=1)
-
-    return geographic_profile
-
-
-def calculate_anchor_point(nodes, geographic_profile):
-    """
-    Calculates the anchor point based on the geographic profile.
-
-    Parameters:
-    - nodes: DataFrame containing geographic coordinates of nodes.
-    - geographic_profile: 1D numpy array of geographic profile values.
-
-    Returns:
-    - anchor_point: Tuple of latitude and longitude of the anchor point.
-    """
-    max_idx = np.argmax(geographic_profile)
-    anchor_point = (nodes.iloc[max_idx]['y'], nodes.iloc[max_idx]['x'])
-
-    return anchor_point
-
-def predict_future_crime_locations(anchor_point, buffer_radius, num_locations=3):
-    """
-    Predicts future crime locations around the anchor point within a buffer zone.
-
-    Parameters:
-    - anchor_point: Tuple of latitude and longitude of the anchor point.
-    - buffer_radius: Radius of the buffer zone around the anchor point.
-    - num_locations: Number of future crime locations to predict.
-
-    Returns:
-    - future_crime_coords: List of tuples containing predicted future crime coordinates.
-    """
-    future_crime_coords = []
-    for _ in range(num_locations):
-        lat_offset = np.random.uniform(-1, 1) * buffer_radius / 111000  # Convert meters to degrees latitude
-        lon_offset = np.random.uniform(-1, 1) * buffer_radius / (111000 * np.cos(np.deg2rad(anchor_point[0])))  # Convert meters to degrees longitude
-        future_coord = (anchor_point[0] + lat_offset, anchor_point[1] + lon_offset)
-        future_crime_coords.append(future_coord)
-    
-    return future_crime_coords
-def get_map_bounds(coords1, coords2=None, padding=0.1):
-    """Calculates the bounds for a Folium map that encompasses all coordinates."""
-    min_lat = min(coords1[:, 0])
-    max_lat = max(coords1[:, 0])
-    min_lon = min(coords1[:, 1])
-    max_lon = max(coords1[:, 1])
-
-    if coords2 is not None:
-        min_lat = min(min_lat, min(coords2[:, 0]))
-        max_lat = max(max_lat, max(coords2[:, 0]))
-        min_lon = min(min_lon, min(coords2[:, 1]))
-        max_lon = max(max_lon, max(coords2[:, 1]))
-
-    lat_padding = (max_lat - min_lat) * padding
-    lon_padding = (max_lon - min_lon) * padding
-    return [(min_lat - lat_padding, min_lon - lon_padding), (max_lat + lat_padding, max_lon + lon_padding)]
-
-def add_dynamic_legend(m):
-    legend_html = """
-    <div style="position: fixed; bottom: 50px; left: 50px; width: 180px; height: 150px; 
-                 border:2px solid grey; z-index:9999; font-size:14px; background-color:white; padding: 10px;">
-        <b>Legend</b><br>
-        <i class="fa fa-map-marker" style="color:red"></i> Crime Location<br>
-        <i class="fa fa-map-marker" style="color:purple"></i> Anchor Point<br>
-        <i class="fa fa-map-marker" style="color:green"></i> Future Crime Location<br>
-        <i class="fa fa-male" style="color:black; font-size:20px;"></i> Individual of Interest<br>
-        <span style="display: inline-block; width: 12px; height: 12px; background-color: yellow;"></span> Low Probability<br>
-        <span style="display: inline-block; width: 12px; height: 12px; background-color: red;"></span> High Probability
+    legend_html = '''
+    <div style="position: fixed; bottom: 50px; left: 50px; width: 300px; height: 280px; background-color: white; 
+    border: 2px solid grey; z-index: 9999; font-size: 14px;">
+    <h4 style="margin-top: 10px;">Legend</h4>
+    <ul style="list-style-type: none; padding-left: 10px;">
+        <li><span style="background-color: red; width: 12px; height: 12px; display: inline-block;"></span> 
+        Crime Locations</li>
+        <li><span style="background-color: green; width: 12px; height: 12px; display: inline-block;"></span> 
+        Predicted Future Crime Locations by Rossmo's Formula</li>
+        <li><span style="background-color: orange; width: 12px; height: 12px; display: inline-block;"></span> 
+        Predicted Future Crime Locations by CGT</li>
+        <li><span style="background-color: purple; width: 12px; height: 12px; display: inline-block;"></span> 
+        Predicted Future Crime Locations by Negative Exponential</li>
+        <li><span style="background-color: pink; width: 12px; height: 12px; display: inline-block;"></span> 
+        Predicted Future Crime Locations by Linear Distance Decay</li>
+        <li><span style="background-color: blue; width: 12px; height: 12px; display: inline-block;"></span> 
+        Sex Offenders</li>
+        <li>
+            <span style="background: linear-gradient(to right, pink, red); width: 50px; height: 12px; display: inline-block;"></span>
+            Probability of Criminal's Location (50% to 100%)
+        </li>
+    </ul>
     </div>
-    """
-    element = folium.Element(legend_html)
-    m.get_root().html.add_child(element)
-    
-def main():
-    announce_and_disclaimer() 
+    '''
+    m.get_root().html.add_child(folium.Element(legend_html))
+    return m
 
-    # Load crime data
-    file_path = "your_crime_data.csv"  # Make sure this matches your file name
-    crime_data = load_crime_data(file_path)
+
+def main():
+    announce_and_disclaimer()
+
+    crime_data_file_path = "your_crime_data.csv"
+    crime_data = load_crime_data(crime_data_file_path)
     if crime_data is None:
-        return  # Exit if there's an error loading the data
+        print("Unable to load crime data. Exiting...")
+        return
+
+    location_file_path = "location.pdf"
+    sex_offenders = extract_individuals_info(location_file_path)
+    sex_offenders = geocode_addresses(sex_offenders)
+    base_location = [crime_data['Latitude'].mean(), crime_data['Longitude'].mean()]
 
     crime_coords = crime_data[['Latitude', 'Longitude']].values
-    
-    # Load street network
-    mean_center_point = np.mean(crime_coords, axis=0)
-    graph = ox.graph_from_point(mean_center_point, dist=10000, network_type='drive')
-    nodes, edges = ox.graph_to_gdfs(graph)
-    node_coords = nodes[['y', 'x']].values  # Extract node coordinates for easier calculation
 
-    # Geographic Profiling and Prediction
-    buffer_radius = 5500  # Or any other value you deem appropriate in meters
-    geographic_profile = calculate_geographic_profile(nodes, crime_coords, buffer_radius=2000, f=1.5) 
+    graph = ox.graph_from_point(base_location, dist=10000, network_type='drive')
+    nodes = ox.graph_to_gdfs(graph, edges=False).reset_index()
+    node_coords = nodes[['y', 'x']].values
+
+    future_crime_coords, top_predictions = predict_future_crime_locations_multiple(nodes, crime_coords)
+
+    geographic_profile = calculate_geographic_profile(nodes, crime_coords)
     anchor_point = calculate_anchor_point(nodes, geographic_profile)
-    future_crime_coords = predict_future_crime_locations(anchor_point, buffer_radius, num_locations=5)
 
-    # Folium Map Creation
-    m = folium.Map(location=anchor_point, zoom_start=13)
-    
-    # Add Heatmap
-    add_probability_heatmap(node_coords, geographic_profile, m, 'YlOrRd') 
-    plugins.HeatMapWithTime(
-        data=[(lat, lon, intensity) for lat, lon, intensity in zip(nodes['y'], nodes['x'], geographic_profile)],
-        radius=50,
-        gradient={0.2: 'blue', 0.6: 'lime', 0.8: 'yellow', 1.0: 'red'},
-        min_opacity=0.3,
-        max_opacity=0.8,
-        blur=15,
-    ).add_to(m)
+    future_crime_with_model = list(zip(future_crime_coords, top_predictions))
 
-    # Add crime markers to map
-    add_markers_to_map(crime_data, mean_center_point, mean_center_point, m)  # Use mean center as it's already calculated
+    folium_map = create_map_with_legend(crime_data, future_crime_with_model, sex_offenders, base_location)
+    add_probability_heatmap(node_coords, geographic_profile, folium_map)
 
-    # Geocode Individuals and Add Markers
-    individuals_data = extract_individuals_info("location.pdf")
-    geocoded_individuals = geocode_addresses(individuals_data)  # Get geocoded results
-    individuals_coords = geocoded_individuals[['Latitude', 'Longitude']].values  # Extract coordinates 
-
-    icon_path = 'person.png'  # Replace with the actual path to your person icon
-    for _, row in geocoded_individuals.iterrows():
-        folium.Marker(
-            location=[row['Latitude'], row['Longitude']],
-            popup=row['name'],
-            icon=folium.CustomIcon(icon_image=icon_path, icon_size=(30, 30))
-        ).add_to(m)
-
-    # Add street network
-    add_street_network_to_map(nodes, edges, crime_coords, future_crime_coords, m, street_network_opacity=0.4)
-
-    # Add anchor point marker
-    folium.Marker(anchor_point, popup='Anchor Point', icon=folium.Icon(color='purple', icon='star')).add_to(m)
-
-    # Add future crime markers
-    for coord in future_crime_coords:
-        folium.Marker(
-            location=[coord[0], coord[1]],
-            popup='Future Crime Location',
-            icon=folium.Icon(color='green')
-        ).add_to(m)
-    # Add dynamic legend
-    add_dynamic_legend(m)
-
-    # Fit Map Bounds (now using individuals_coords)
-    bounds = get_map_bounds(crime_coords, individuals_coords, padding=0.1)  
-    m.fit_bounds(bounds)
-
-
-    # Save map
-    m.save("crime_map.html")
-    print("Map has been saved as crime_map.html")
+    folium_map.save("predicted_crime_locations_map.html")
+    print("Map saved as 'predicted_crime_locations_map.html'")
 
 if __name__ == "__main__":
     main()
-
