@@ -1,4 +1,4 @@
-# GeoCrime: The Forensic Forecaster
+# GeoGraphCrime: The Forensic Forecaster
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python Version](https://img.shields.io/badge/python-3.x-blue.svg)](https://www.python.org/)
