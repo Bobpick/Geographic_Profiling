@@ -17,7 +17,7 @@ NOMINATIM_USER_AGENT = "GeoCrime"
 def announce_and_disclaimer():
     """Display the announcement and disclaimer before starting the process."""
     announcement = """
-                    GeoCrime: The Forensic Forecaster
+                    GeoGraphCrime: The Forensic Forecaster
                     By Robert Pickett (c) 2024
 
     Please put the crime information with latitude, longitude, date, and time in separate columns and save as "your_crime_data.csv"
