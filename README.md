@@ -18,7 +18,7 @@ GeoCrime is a Python-based tool designed to aid in forensic investigations by pr
 - **Data Integration:** Incorporates crime data from CSV files and sex offender location data from PDF files.
 - **Interactive Map:** Creates an interactive Folium map for easy exploration of crime data, predictions, and locations of interest.
 
-[![Predicted Next Locations](https://github.com/Bobpick/Geographic_Profiling/blob/main/potential_next_location.png)](https://github.com/Bobpick/Geographic_Profiling/blob/main/Criminal_location_probability.png)
+[![Probable Next Location](https://github.com/Bobpick/Geographic_Profiling/blob/main/Probable_next_location.png)](https://github.com/Bobpick/Geographic_Profiling/blob/main/Probable_next_location.png)
 
 ## Getting Started
 
@@ -41,7 +41,7 @@ GeoCrime is a Python-based tool designed to aid in forensic investigations by pr
          - "Location Details:" followed by the offender's address on the next line
 
 
-[![Offender Locations]([https://github.com/Bobpick/Geographic_Profiling/blob/main/potential_next_location.png)](https://github.com/Bobpick/Geographic_Profiling/blob/main/Offender_map.png)
+[![Offender Locations](https://github.com/Bobpick/Geographic_Profiling/blob/main/Offender_map.png)](https://github.com/Bobpick/Geographic_Profiling/blob/main/Offender_map.png)
 
 3. **Installation:**
    - Clone this repository: `git clone https://github.com/your-username/GeoCrime.git`
@@ -53,7 +53,7 @@ GeoCrime is a Python-based tool designed to aid in forensic investigations by pr
 ## Understanding the Predictive Algorithms
 
 - **Predictive Algorithms:** Employs multiple machine learning models (Rossmo's Formula, Crime Geographic Targeting, Negative Exponential Distance Decay, Linear Distance Decay) to predict future crime locations.
-- **Heatmap Visualization:** Generates a heatmap to visualize the probability distribution of future crime locations based on combined model predictions.
+- **Heatmap Visualization:** Generates a heatmap to visualize the probability distribution of future crime locations and home of the perpertrtor based on combined model predictions.
 - **Consensus Highlighting:** Identifies and marks locations where multiple models agree on high probability, indicating areas of increased concern.
 - **Data Integration:** Incorporates crime data from CSV files and sex offender location data from PDF files.
 - **Interactive Map:** Creates an interactive Folium map for easy exploration of crime data, predictions, and locations of interest.
