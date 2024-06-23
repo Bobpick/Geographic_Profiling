@@ -1,81 +1,66 @@
 # GeoCrime: The Forensic Forecaster
 
-[![Overview Image](https://github.com/Bobpick/Geographic_Profiling/raw/main/overview_image.png)](https://github.com/Bobpick/Geographic_Profiling/blob/main/overview_image.png)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Python Version](https://img.shields.io/badge/python-3.x-blue.svg)](https://www.python.org/)
+[![OSMnx](https://img.shields.io/badge/OSMnx-v1.x-green.svg)](https://osmnx.readthedocs.io/)
 
-GeoCrime is a Python-based tool designed to aid criminal investigations by applying geographic profiling techniques. It utilizes crime location data, street network information, and potentially offender data to estimate likely anchor points (e.g., residence or base of operations) and predict future crime locations.
+GeoCrime is a Python-based tool designed to aid in forensic investigations by predicting potential future crime locations. It utilizes geographic profiling, machine learning, and data visualization techniques to create a comprehensive map of criminal activity and risk areas.
+
+**By Robert Pickett (c) 2024**
 
 ## Features
 
-* **Crime Data Analysis:** Processes crime data from a CSV file containing latitude, longitude, date, and time.
-* **Geographic Profiling:** Applies Rossmo's formula and other techniques to generate a geographic profile, highlighting areas with higher probabilities of the offender's residence.
-* **Anchor Point Estimation:** Calculates the most likely anchor point based on the geographic profile.
-* **Future Crime Prediction:** Predicts potential future crime locations within a buffer zone around the anchor point.
-* **Interactive Map Visualization:**  Creates an interactive Folium map that visualizes:
-    * **Crime Locations:** Markers for past crime incidents.
-    * **Heatmap:** Visual representation of the geographic profile (probability distribution).
-    * **Anchor Point:** Estimated location of the offender's base.
-    * **Future Crime Predictions:**  Markers for potential future crime sites.
-    * [![Image 2: Screenshot of the map with a potential next locations](https://github.com/Bobpick/Geographic_Profiling/blob/main/potential_next_location.png))
-    * **Street Network:** Overlay of roads and streets for context.
-* **Registered Sex Offender Overlay:**  Option to overlay the locations of registered sex offenders from a PDF file.
-[![Image 3: Screenshot of the map with registered offender](https://github.com/Bobpick/Geographic_Profiling/blob/main/zoomed_in_image.png)
+- **Predictive Algorithms:** Employs multiple machine learning models (Rossmo's Formula, Crime Geographic Targeting, Negative Exponential Distance Decay, Linear Distance Decay) to predict future crime locations.
+- **Heatmap Visualization:** Generates a heatmap to visualize the probability distribution of future crime locations based on combined model predictions.
+- **Consensus Highlighting:** Identifies and marks locations where multiple models agree on high probability, indicating areas of increased concern.
+- **Data Integration:** Incorporates crime data from CSV files and sex offender location data from PDF files.
+- **Interactive Map:** Creates an interactive Folium map for easy exploration of crime data, predictions, and locations of interest.
+   [![Image 2: Screenshot of the map with a potential next locations][(https://github.com/Bobpick/Geographic_Profiling/blob/main/potential_next_location.png](https://github.com/Bobpick/Geographic_Profiling/blob/main/potential_next_location.png)))
+## Getting Started
 
-* **Address Geocoding:**  Uses the OpenCage API to geocode addresses of individuals for mapping.
-* **Customizable Parameters:** Allows adjusting parameters like the buffer zone radius and decay factor for fine-tuning the analysis.
+1. **Prerequisites:** Ensure you have Python 3.x installed along with the required libraries (see `requirements.txt`).
 
-## How to Use
+2. **Data Preparation:**
+   - **Crime Data (CSV):**
+      - File name: `your_crime_data.csv`
+      - Columns:
+         - `Latitude`: Latitude coordinate of the crime
+         - `Longitude`: Longitude coordinate of the crime
+         - `Date`: Date of the crime (e.g., "2024-06-22")
+         - `Time`: Time of the crime (e.g., "14:30")
+         - All on one line, separated by a comma
+   - **Sex Offender Data (PDF):**
+      - File name: `location.pdf`
+      - Format:
+         - The PDF should contain individual entries for each sex offender.
+         - Each entry must have the following text labels and their corresponding values on separate lines:
+            - "First and Last Name:" followed by the offender's name on the next line
+            - "Location Details:" followed by the offender's address on the next line
 
-1. **Prepare Input Data:**
-   * Create a CSV file named "your_crime_data.csv" with columns: `Latitude`, `Longitude`, `Date`, `Time`.
-   * Place the file in the same directory as the script.
-   * Optionally, prepare a PDF file named "location.pdf" containing the addresses of individuals of interest.
+![Location of offenders](Isolated.png "Title")
+3. **Installation:**
+   - Clone this repository: `git clone https://github.com/your-username/GeoCrime.git`
+   - Install dependencies: `pip install -r requirements.txt`
    
-2. **Install Dependencies:**
-   ```bash
-   pip install pandas numpy folium osmnx matplotlib scipy opencage geopy fitz scikit-learn
-   
-## Installation
+4. **Run the Script:**
+   - Execute the Python script: `python GeoCrime.py` (Replace "GeoCrime.py" with the actual filename if you renamed it)
 
-1. **Clone the repository:** `git clone https://github.com/your_username/GeoCrime.git`
-2. **Install dependencies:** `pip install -r requirements.txt`
+## Understanding the Predictive Algorithms
 
-## Usage
+- **Predictive Algorithms:** Employs multiple machine learning models (Rossmo's Formula, Crime Geographic Targeting, Negative Exponential Distance Decay, Linear Distance Decay) to predict future crime locations.
+- **Heatmap Visualization:** Generates a heatmap to visualize the probability distribution of future crime locations based on combined model predictions.
+- **Consensus Highlighting:** Identifies and marks locations where multiple models agree on high probability, indicating areas of increased concern.
+- **Data Integration:** Incorporates crime data from CSV files and sex offender location data from PDF files.
+- **Interactive Map:** Creates an interactive Folium map for easy exploration of crime data, predictions, and locations of interest.
 
-1. **Prepare your data:**
-   * **Crime Data:** Create a CSV file named "your_crime_data.csv" with columns for Latitude, Longitude, Date, and Time.
-   * **Sex Offender Data:** Obtain a PDF file named "location.pdf" containing sex offender information (see example format below).
-2. **Run the script:** `python geocrime.py`
-3. **View the results:**
-   * **Crime_Map.html:** Interactive map displaying crime locations, street network, and individuals of interest.
- 
-## Example Data Files
+The tool combines predictions from all these models, giving equal weight to each, and also highlights areas where multiple models agree.
+[![Predicted Locations](https://github.com/Bobpick/Geographic_Profiling/blob/main/potential_next_location.png)(https://github.com/Bobpick/Geographic_Profiling/blob/main/potential_next_location.png)]
+## Important Note
 
-### your_crime_data.csv
-
-```
-Latitude,Longitude,Date,Time
-34.0522,-118.2437,2024-06-15,14:30:00
-34.0622,-118.2537,2024-06-16,02:15:00
-34.0422,-118.2337,2024-06-17,21:45:00
-```
-
-### location.pdf (Excerpt)
-
-```
-First and Last Name
-John Doe
-Location Details
-123 Main St, Los Angeles, CA 90001
-```
-
-## Disclaimer
-
-This tool is intended for informational and research purposes only. The predictions and analysis are not guaranteed to be 100% accurate and should not be used as the sole basis for decision-making. Always consult with law enforcement professionals and exercise caution when interpreting the results.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests.
+This tool is meant to assist in investigations, not replace them. Its predictions are based on statistical models and should not be considered definitive. Always use this information in conjunction with professional judgment and other investigative techniques.
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the Apache 2.0 License.
+
+
