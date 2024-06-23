@@ -8,6 +8,8 @@ GeoCrime is a Python-based tool designed to aid in forensic investigations by pr
 
 **By Robert Pickett (c) 2024**
 
+[![Overview](https://github.com/Bobpick/Geographic_Profiling/blob/main/GeoCrime_Map_Overview.png)](https://github.com/Bobpick/Geographic_Profiling/blob/main/GeoCrime_Map_Overview.png)
+
 ## Features
 
 - **Predictive Algorithms:** Employs multiple machine learning models (Rossmo's Formula, Crime Geographic Targeting, Negative Exponential Distance Decay, Linear Distance Decay) to predict future crime locations.
@@ -15,29 +17,32 @@ GeoCrime is a Python-based tool designed to aid in forensic investigations by pr
 - **Consensus Highlighting:** Identifies and marks locations where multiple models agree on high probability, indicating areas of increased concern.
 - **Data Integration:** Incorporates crime data from CSV files and sex offender location data from PDF files.
 - **Interactive Map:** Creates an interactive Folium map for easy exploration of crime data, predictions, and locations of interest.
-   [![Image 2: Screenshot of the map with a potential next locations][(https://github.com/Bobpick/Geographic_Profiling/blob/main/potential_next_location.png](https://github.com/Bobpick/Geographic_Profiling/blob/main/potential_next_location.png)))
+
+[![Predicted Next Locations](https://github.com/Bobpick/Geographic_Profiling/blob/main/potential_next_location.png)](https://github.com/Bobpick/Geographic_Profiling/blob/main/Criminal_location_probability.png)
+
 ## Getting Started
 
 1. **Prerequisites:** Ensure you have Python 3.x installed along with the required libraries (see `requirements.txt`).
 
 2. **Data Preparation:**
    - **Crime Data (CSV):**
-      - File name: `your_crime_data.csv`
-      - Columns:
-         - `Latitude`: Latitude coordinate of the crime
-         - `Longitude`: Longitude coordinate of the crime
-         - `Date`: Date of the crime (e.g., "2024-06-22")
-         - `Time`: Time of the crime (e.g., "14:30")
-         - All on one line, separated by a comma
+     - File name: `your_crime_data.csv`
+     - Columns:
+       - `Latitude`: Latitude coordinate of the crime
+       - `Longitude`: Longitude coordinate of the crime
+       - `Date`: Date of the crime (e.g., "2024-06-22")
+       - `Time`: Time of the crime (e.g., "14:30")
    - **Sex Offender Data (PDF):**
-      - File name: `location.pdf`
-      - Format:
-         - The PDF should contain individual entries for each sex offender.
-         - Each entry must have the following text labels and their corresponding values on separate lines:
-            - "First and Last Name:" followed by the offender's name on the next line
-            - "Location Details:" followed by the offender's address on the next line
+     - File name: `location.pdf`
+     - Format:
+       - The PDF should contain individual entries for each sex offender.
+       - Each entry must have the following text labels and their corresponding values on separate lines:
+         - "First and Last Name:" followed by the offender's name on the next line
+         - "Location Details:" followed by the offender's address on the next line
 
-![Location of offenders](Isolated.png "Title")
+
+[![Offender Locations]([https://github.com/Bobpick/Geographic_Profiling/blob/main/potential_next_location.png)](https://github.com/Bobpick/Geographic_Profiling/blob/main/Offender_map.png)
+
 3. **Installation:**
    - Clone this repository: `git clone https://github.com/your-username/GeoCrime.git`
    - Install dependencies: `pip install -r requirements.txt`
@@ -54,7 +59,7 @@ GeoCrime is a Python-based tool designed to aid in forensic investigations by pr
 - **Interactive Map:** Creates an interactive Folium map for easy exploration of crime data, predictions, and locations of interest.
 
 The tool combines predictions from all these models, giving equal weight to each, and also highlights areas where multiple models agree.
-[![Predicted Locations](https://github.com/Bobpick/Geographic_Profiling/blob/main/potential_next_location.png)(https://github.com/Bobpick/Geographic_Profiling/blob/main/potential_next_location.png)]
+
 ## Important Note
 
 This tool is meant to assist in investigations, not replace them. Its predictions are based on statistical models and should not be considered definitive. Always use this information in conjunction with professional judgment and other investigative techniques.
@@ -62,5 +67,3 @@ This tool is meant to assist in investigations, not replace them. Its prediction
 ## License
 
 This project is licensed under the Apache 2.0 License.
-
-
